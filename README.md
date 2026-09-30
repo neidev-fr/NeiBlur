@@ -1,8 +1,13 @@
 # NeiBlur
 
+
 Ajoute du motion blur à tes vidéos, simplement. **Créé par neidev.**
 
 NeiBlur est une refonte de [Blur](https://github.com/f0e/blur) (f0e) avec une interface simplifiée, des préréglages prêts à l'emploi et un **seul fichier à lancer** : `NeiBlur.exe` (~12 Mo).
+
+<p align="center">
+  <img src="https://www.image-heberg.fr/files/17908038271179781342.png" alt="Interface de NeiBlur" width="80%">
+</p>
 
 ## Utilisation
 
