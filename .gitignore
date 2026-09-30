@@ -1,0 +1,6 @@
+build/bin/
+NeiBlur-data/
+*.jpg
+frontend/wailsjs/
+build/windows/
+build/darwin/

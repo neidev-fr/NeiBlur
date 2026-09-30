@@ -1,0 +1,19 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "NeiBlur",
+  "outputfilename": "NeiBlur",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dir": "frontend",
+  "wailsjsdir": "",
+  "author": {
+    "name": "neidev"
+  },
+  "info": {
+    "companyName": "neidev",
+    "productName": "NeiBlur",
+    "productVersion": "1.0.0",
+    "copyright": "© 2026 neidev — GPL-3.0",
+    "comments": "Motion blur pour vidéos. Moteur : Blur par f0e."
+  }
+}
