@@ -10,6 +10,7 @@ sys.path.insert(1, str(Path(__file__).parent))
 
 import blur.blending
 import blur.deduplicate
+import blur.grading
 import blur.interpolate
 import blur.weighting
 import blur.utils as u
@@ -27,6 +28,7 @@ fps_num = vars().get("fps_num", -1)
 fps_den = vars().get("fps_den", -1)
 color_range = vars().get("color_range", "")
 is_full_color_range = color_range == "pc"
+color_matrix = vars().get("color_matrix", "")
 
 # validate some settings
 svp_interpolation_algorithm = u.coalesce(
@@ -282,5 +284,8 @@ if settings["filters"]:
             ),
         )
 
+# colorimétrie NeiBlur (exposition, balance des blancs, looks, vignette, netteté…)
+if settings.get("grading"):
+    video = blur.grading.grade(video, is_full_color_range, color_matrix, settings)
 
 video.set_output()

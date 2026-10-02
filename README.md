@@ -11,22 +11,30 @@ NeiBlur est une refonte de [Blur](https://github.com/f0e/blur) (f0e) avec une in
 
 ## Utilisation
 
-1. Lance `NeiBlur.exe`. Au premier démarrage, clique **Installer le moteur** (téléchargement unique d'environ 118 Mo, sans droits administrateur, fichiers vérifiés par SHA-256).
+1. Télécharge `NeiBlur.exe` depuis la page [Releases](https://github.com/neidev-fr/NeiBlur/releases) et lance-le. Au premier démarrage, clique **Installer le moteur** (téléchargement unique d'environ 118 Mo, sans droits administrateur, fichiers vérifiés par SHA-256).
 2. Glisse tes vidéos (ou un dossier) dans la fenêtre.
 3. Choisis un style, ajuste l'intensité si besoin, puis clique **Lancer le rendu**.
 
 La vidéo est créée à côté de l'originale : `ma vidéo - blur.mp4`.
 
-| Préréglage | Pour quoi |
+| Style | Pour quoi |
 |---|---|
 | Gaming fluide | Réglages d'origine de Blur (1200 i/s SVP, flou 100 %, 60 i/s) |
-| Cinéma | Obturation 180°, 30 i/s, pondération gaussienne |
-| Subtil | Flou léger (30 %) |
-| Intense | Traînées marquées (160 %, pyramide) |
+| Lumière réaliste | Flou mélangé en lumière linéaire (gamma 2.2) avec obturateur doux : vraies traînées lumineuses |
+| Cinéma | Obturation 180°, 30 i/s, obturateur doux et lumière réaliste |
+| Subtil | Flou léger (30 %) à fondu en cloche |
+| Intense | Traînées marquées (180 %) |
+| Extrême | Traînées très longues (350 %) pour les effets stylisés |
 | Qualité max | Interpolation IA RIFE (plus lent, moins d'artefacts) |
 | Brouillon rapide | Tests rapides (360 i/s, fichier léger) |
 
-Tous les réglages de Blur restent disponibles dans **Réglages avancés**, et tu peux enregistrer les tiens comme préréglage.
+Les réglages sont rangés en trois onglets :
+
+- **Flou** : style, intensité (jusqu'à 500 %), images/s de sortie (jusqu'à 2000), forme du flou (obturateur doux, cloche, uniforme…), lumière réaliste, et tous les réglages experts de Blur (interpolation, déduplication, vitesse, SVP).
+- **Couleur** : looks prêts à l'emploi (Film, Teal & orange, Chaud, Froid, Vif, Vintage, Nuit, Noir et blanc), exposition, contraste, hautes lumières, ombres, noirs délavés, température, teinte, saturation, vibrance, vignettage et netteté. La colorimétrie est appliquée après le flou et visible dans l'aperçu.
+- **Sortie** : codec, qualité, encodage GPU, résolution (480p à 4K, vidéos verticales comprises), format MP4 / MKV / MOV, son (suppression, débit).
+
+Tu peux enregistrer tes réglages comme style personnel. Double-clic sur un curseur pour le remettre à sa valeur d'origine.
 
 Raccourcis : `Ctrl+O` ajouter · `Ctrl+Entrée` lancer · `Ctrl+P` aperçu · `Ctrl+,` paramètres · `Échap` fermer.
 
@@ -47,7 +55,9 @@ Le moteur de rendu est **exactement celui de Blur** : mêmes composants aux mêm
 
 ## Compiler
 
-Prérequis : Go 1.23+ et Wails v2 (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`).
+**Sans rien installer** : chaque envoi sur `main` est compilé automatiquement par GitHub Actions (onglet *Actions* du dépôt, l'exe est dans les *Artifacts*). Pour publier une version, onglet *Actions* → *Build* → *Run workflow* : une Release `vX.Y.Z` est créée avec l'exe (la version est lue dans `main.go`).
+
+**Sur ton PC** — prérequis : Go 1.23+ et Wails v2 (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`).
 
 ```powershell
 go run ./cmd/genicon            # génère build/appicon.png
@@ -71,7 +81,7 @@ engine/install.go        installation du moteur (URLs épinglées + SHA-256)
 engine/render.go         analyse ffprobe, rendu VSPipe | FFmpeg, aperçu, pause/reprise
 engine/settings.go       réglages, préréglages, encodeurs
 engine/win.go            priorité, suspension de processus, anti-veille (API Windows)
-engine/scripts/          scripts VapourSynth de Blur (GPL-3.0)
+engine/scripts/          scripts VapourSynth de Blur (GPL-3.0) + blur/grading.py (colorimétrie NeiBlur)
 frontend/dist/           interface (HTML/CSS/JS sans framework)
 ```
 

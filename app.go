@@ -47,6 +47,9 @@ func loadConfig() Config {
 		_ = json.Unmarshal(b, &c)
 	}
 	c.Settings.Normalize()
+	for i := range c.UserPresets {
+		c.UserPresets[i].Settings.Normalize()
+	}
 	return c
 }
 

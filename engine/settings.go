@@ -32,11 +32,29 @@ type Settings struct {
 	Saturation float64 `json:"saturation"`
 	Contrast   float64 `json:"contrast"`
 
+	// Colorimétrie (0 = neutre, voir scripts/blur/grading.py)
+	Exposure    float64 `json:"exposure"` // en IL
+	Temperature float64 `json:"temperature"`
+	Tint        float64 `json:"tint"`
+	Shadows     float64 `json:"shadows"`
+	Highlights  float64 `json:"highlights"`
+	Vibrance    float64 `json:"vibrance"`
+	Fade        float64 `json:"fade"`
+	Vignette    float64 `json:"vignette"`
+	Sharpen     float64 `json:"sharpen"`
+	Look        string  `json:"look"`
+	LookAmount  float64 `json:"lookAmount"`
+
 	Codec       string `json:"codec"` // h264 | h265 | av1
 	Quality     int    `json:"quality"`
 	GPUDecoding bool   `json:"gpuDecoding"`
 	GPUInterp   bool   `json:"gpuInterp"`
 	GPUEncoding bool   `json:"gpuEncoding"`
+
+	Resolution   int    `json:"resolution"` // côté court en pixels, 0 = original
+	Container    string `json:"container"`  // mp4 | mkv | mov
+	NoAudio      bool   `json:"noAudio"`
+	AudioBitrate int    `json:"audioBitrate"` // kb/s
 
 	SVPPreset    string `json:"svpPreset"`
 	SVPAlgorithm string `json:"svpAlgorithm"`
@@ -53,8 +71,8 @@ func DefaultSettings() Settings {
 		Interpolate: true, InterpolatedFPS: "1200", InterpMethod: "svp", PreInterpolatedFPS: "360",
 		Deduplicate: true, DedupMethod: "svp", DedupRange: 2, DedupThreshold: "0.001",
 		InputTimescale: 1, OutputTimescale: 1,
-		Brightness: 1, Saturation: 1, Contrast: 1,
-		Codec: "h264", Quality: 16, GPUDecoding: true, GPUInterp: true,
+		Brightness: 1, Saturation: 1, Contrast: 1, LookAmount: 1,
+		Codec: "h264", Quality: 16, GPUDecoding: true, GPUInterp: true, Container: "mp4", AudioBitrate: 320,
 		SVPPreset: "weak", SVPAlgorithm: "13", BlockSize: "8", MaskArea: 0,
 	}
 }
@@ -75,15 +93,21 @@ func BuiltinPresets() []Preset {
 		{ID: "gaming", Name: "Gaming fluide", Icon: "gamepad", Speed: 3,
 			Description: "Réglages d'origine de Blur. Flou naturel, idéal pour les clips de jeu en 60 i/s.",
 			Settings:    DefaultSettings()},
-		{ID: "cinema", Name: "Cinéma", Icon: "film", Speed: 3,
-			Description: "Obturation à 180°, 30 i/s, pondération douce. Rendu « film ».",
-			Settings: with(func(s *Settings) { s.BlurAmount = 0.5; s.OutputFPS = 30; s.Weighting = "gaussian_sym" })},
+		{ID: "natural", Name: "Lumière réaliste", Icon: "sun", Speed: 2,
+			Description: "Flou mélangé en lumière linéaire avec un obturateur doux : les zones claires laissent de vraies traînées, sans bords durs.",
+			Settings: with(func(s *Settings) { s.Weighting = "soft_shutter"; s.Gamma = 2.2 })},
+		{ID: "cinema", Name: "Cinéma", Icon: "film", Speed: 2,
+			Description: "Obturation à 180°, 30 i/s, obturateur doux et lumière réaliste. Rendu « film ».",
+			Settings: with(func(s *Settings) { s.BlurAmount = 0.5; s.OutputFPS = 30; s.Weighting = "soft_shutter"; s.Gamma = 2.2 })},
 		{ID: "subtle", Name: "Subtil", Icon: "feather", Speed: 3,
 			Description: "Un léger flou qui adoucit les mouvements sans traînées visibles.",
-			Settings: with(func(s *Settings) { s.BlurAmount = 0.3 })},
+			Settings: with(func(s *Settings) { s.BlurAmount = 0.3; s.Weighting = "hann" })},
 		{ID: "intense", Name: "Intense", Icon: "zap", Speed: 3,
 			Description: "Traînées marquées, effet très fluide pour montages et edits.",
-			Settings: with(func(s *Settings) { s.BlurAmount = 1.6; s.Weighting = "pyramid" })},
+			Settings: with(func(s *Settings) { s.BlurAmount = 1.8; s.Weighting = "hann" })},
+		{ID: "extreme", Name: "Extrême", Icon: "wind", Speed: 2,
+			Description: "Traînées très longues (350 %) à fondu progressif, pour des effets stylisés.",
+			Settings: with(func(s *Settings) { s.BlurAmount = 3.5; s.Weighting = "hann"; s.Gamma = 1.8 })},
 		{ID: "quality", Name: "Qualité max", Icon: "sparkles", Speed: 1,
 			Description: "Interpolation IA RIFE : moins d'artefacts, mais nettement plus lent.",
 			Settings: with(func(s *Settings) { s.InterpMethod = "rife"; s.InterpolatedFPS = "600"; s.DedupMethod = "rife"; s.Quality = 14 })},
@@ -106,6 +130,9 @@ func (s Settings) blurJSON(p Paths, gpuType string) (string, error) {
 		"timescale": timescale, "input_timescale": s.InputTimescale, "output_timescale": s.OutputTimescale,
 		"output_timescale_audio_pitch": s.AudioPitch,
 		"filters": filters, "brightness": s.Brightness, "saturation": s.Saturation, "contrast": s.Contrast,
+		"grading": s.grading(), "exposure": s.Exposure, "temperature": s.Temperature, "tint": s.Tint,
+		"shadows": s.Shadows, "highlights": s.Highlights, "vibrance": s.Vibrance, "fade": s.Fade,
+		"vignette": s.Vignette, "sharpen": s.Sharpen, "look": s.Look, "look_amount": s.LookAmount,
 		"encode preset": s.Codec, "quality": s.Quality, "preview": false, "detailed_filenames": s.DetailedFilenames,
 		"gpu_decoding": s.GPUDecoding, "gpu_interpolation": s.GPUInterp, "gpu_encoding": s.GPUEncoding,
 		"deduplicate_range": s.DedupRange, "deduplicate_threshold": s.DedupThreshold, "debug": false,
@@ -161,6 +188,49 @@ func (s *Settings) Normalize() {
 	if s.Weighting == "" {
 		s.Weighting = "equal"
 	}
+	if s.BlurAmount > 10 {
+		s.BlurAmount = 10
+	}
+	s.Exposure = clamp(s.Exposure, -3, 3)
+	for _, v := range []*float64{&s.Temperature, &s.Tint, &s.Shadows, &s.Highlights, &s.Vibrance, &s.Vignette} {
+		*v = clamp(*v, -1, 1)
+	}
+	s.Fade = clamp(s.Fade, -0.5, 0.5)
+	s.Sharpen = clamp(s.Sharpen, 0, 2)
+	switch s.Look {
+	case "", "warm", "cool", "teal_orange", "film", "vintage", "vivid", "night", "bw":
+	default:
+		s.Look = ""
+	}
+	if s.LookAmount <= 0 || s.LookAmount > 2 {
+		s.LookAmount = 1
+	}
+	switch s.Container {
+	case "mp4", "mkv", "mov":
+	default:
+		s.Container = "mp4"
+	}
+	if s.Resolution < 0 || s.Resolution > 4320 {
+		s.Resolution = 0
+	}
+	if s.AudioBitrate < 64 || s.AudioBitrate > 512 {
+		s.AudioBitrate = d.AudioBitrate
+	}
+}
+
+func clamp(v, lo, hi float64) float64 { return max(lo, min(hi, v)) }
+
+// grading indique si une étape de colorimétrie NeiBlur change l'image.
+func (s Settings) grading() bool {
+	if s.Look != "" {
+		return true
+	}
+	for _, v := range []float64{s.Exposure, s.Temperature, s.Tint, s.Shadows, s.Highlights, s.Vibrance, s.Fade, s.Vignette, s.Sharpen} {
+		if v != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func validFPS(v string) bool {

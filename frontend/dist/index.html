@@ -10,11 +10,12 @@
 <div class="app" id="app">
   <header class="topbar">
     <div class="brand">
-      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="8" fill="var(--accent)"/><circle cx="19" cy="16" r="6" fill="#fff"/><circle cx="13.5" cy="16" r="6" fill="#fff" opacity=".45"/><circle cx="9" cy="16" r="6" fill="#fff" opacity=".2"/></svg>
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="5" fill="var(--logo-bg)"/><rect x="5" y="11" width="9" height="2.4" rx="1.2" fill="var(--accent)" opacity=".35"/><rect x="3" y="15" width="12" height="2.4" rx="1.2" fill="var(--accent)" opacity=".6"/><rect x="5" y="19" width="9" height="2.4" rx="1.2" fill="var(--accent)" opacity=".35"/><circle cx="20.5" cy="16.2" r="6.5" fill="var(--accent)"/></svg>
       <span class="brand-name">NeiBlur</span>
+      <span class="brand-ver" id="version"></span>
     </div>
     <div class="topbar-right">
-      <span class="pill" id="gpuPill" hidden></span>
+      <span class="status-chip" id="gpuPill" hidden></span>
       <button class="icon-btn" id="btnSettings" title="Paramètres (Ctrl+,)" aria-label="Paramètres"><svg><use href="#i-settings"/></svg></button>
       <button class="icon-btn" id="btnAbout" title="À propos" aria-label="À propos"><svg><use href="#i-info"/></svg></button>
     </div>
@@ -23,19 +24,22 @@
   <main class="main">
     <section class="left" aria-label="Vidéos">
       <div class="dropzone" id="drop" style="--wails-drop-target: drop" tabindex="0" role="button" aria-label="Ajouter des vidéos">
-        <svg class="drop-icon"><use href="#i-upload"/></svg>
+        <svg class="drop-icon"><use href="#i-plus"/></svg>
         <div class="drop-text">
-          <strong>Dépose tes vidéos ici</strong>
-          <span>ou clique pour parcourir · fichiers ou dossiers · MP4, MKV, MOV…</span>
+          <strong>Ajouter des vidéos</strong>
+          <span>Glisse des fichiers ou un dossier ici, ou clique pour parcourir</span>
         </div>
+        <kbd class="drop-kbd">Ctrl O</kbd>
       </div>
 
       <div class="empty" id="empty">
-        <ol class="steps">
-          <li><span>1</span><div><b>Ajoute tes vidéos</b><small>Glisse-les dans la zone ci-dessus.</small></div></li>
-          <li><span>2</span><div><b>Choisis un style</b><small>« Gaming fluide » convient à la plupart des clips.</small></div></li>
-          <li><span>3</span><div><b>Lance le rendu</b><small>La vidéo floutée est créée à côté de l'originale.</small></div></li>
-        </ol>
+        <p class="empty-title">La file est vide.</p>
+        <p class="empty-text">Ajoute une vidéo, choisis un style à droite, puis lance le rendu. La vidéo floutée est enregistrée à côté de l'originale.</p>
+        <dl class="shortcuts">
+          <div><dt><kbd>Ctrl</kbd> <kbd>Entrée</kbd></dt><dd>lancer le rendu</dd></div>
+          <div><dt><kbd>Ctrl</kbd> <kbd>P</kbd></dt><dd>aperçu avant / après</dd></div>
+          <div><dt>double-clic</dt><dd>sur un curseur pour le remettre à zéro</dd></div>
+        </dl>
       </div>
 
       <div class="queue-head" id="queueHead" hidden>
@@ -46,35 +50,61 @@
     </section>
 
     <aside class="side" aria-label="Réglages">
-      <div class="side-scroll">
-        <h2 class="section-title">Style</h2>
-        <div class="presets" id="presets" role="radiogroup" aria-label="Préréglages"></div>
+      <nav class="tabs" role="tablist" aria-label="Réglages">
+        <button class="tab" role="tab" data-tab="blur" aria-selected="true">Flou</button>
+        <button class="tab" role="tab" data-tab="color" aria-selected="false">Couleur<i class="tab-dot" id="colorDot" hidden></i></button>
+        <button class="tab" role="tab" data-tab="output" aria-selected="false">Sortie</button>
+      </nav>
 
-        <h2 class="section-title">Ajuster</h2>
-        <div class="field">
-          <div class="field-row">
-            <label for="intensity">Intensité du flou</label>
-            <output id="intensityOut"></output>
+      <div class="side-scroll" id="sideScroll">
+        <div class="panel" data-panel="blur" role="tabpanel">
+          <div class="group">
+            <div class="group-title">Style</div>
+            <div class="presets" id="presets" role="radiogroup" aria-label="Préréglages"></div>
           </div>
-          <input type="range" id="intensity" min="0" max="2" step="0.05">
-          <div class="scale"><span>Léger</span><span>Naturel</span><span>Intense</span></div>
-        </div>
-        <div class="field">
-          <div class="field-row"><label>Images/s de sortie</label></div>
-          <div class="segmented" id="fpsSeg" role="radiogroup" aria-label="Images par seconde de sortie">
-            <button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button><button data-v="120">120</button><button data-v="custom" id="fpsCustomBtn">Autre</button>
-          </div>
-          <input type="number" id="fpsCustom" class="input small" min="1" max="1000" hidden aria-label="Images/s personnalisées">
-        </div>
 
-        <details class="adv" id="adv">
-          <summary><svg><use href="#i-sliders"/></svg>Réglages avancés <span class="modified" id="modified" hidden>modifié</span></summary>
-          <div class="adv-body" id="advBody"></div>
-          <div class="adv-actions">
-            <button class="btn ghost small" id="btnSavePreset"><svg><use href="#i-star"/></svg>Enregistrer comme préréglage</button>
+          <div class="group">
+            <div class="group-title">Réglage <span class="modified" id="modified" hidden>modifié</span></div>
+            <div class="field">
+              <div class="field-row">
+                <label for="intensity">Intensité du flou</label>
+                <output id="intensityOut"></output>
+              </div>
+              <input type="range" id="intensity" min="0" max="5" step="0.05">
+              <div class="scale"><span>0</span><span>100</span><span>200</span><span>300</span><span>400</span><span>500 %</span></div>
+            </div>
+            <div class="field">
+              <div class="field-row"><label>Images/s de sortie</label></div>
+              <div class="segmented" id="fpsSeg" role="radiogroup" aria-label="Images par seconde de sortie">
+                <button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button><button data-v="120">120</button><button data-v="240">240</button><button data-v="custom" id="fpsCustomBtn">Autre</button>
+              </div>
+              <input type="number" id="fpsCustom" class="input small" min="1" max="2000" hidden aria-label="Images/s personnalisées">
+            </div>
+            <div id="blurBody"></div>
+          </div>
+
+          <details class="adv" id="adv">
+            <summary>Interpolation, déduplication, vitesse</summary>
+            <div class="adv-body" id="advBody"></div>
+          </details>
+
+          <div class="panel-actions">
+            <button class="btn ghost small" id="btnSavePreset"><svg><use href="#i-star"/></svg>Enregistrer comme style</button>
             <button class="btn ghost small" id="btnReset"><svg><use href="#i-reset"/></svg>Réinitialiser</button>
           </div>
-        </details>
+        </div>
+
+        <div class="panel" data-panel="color" role="tabpanel" hidden>
+          <div id="colorBody"></div>
+          <p class="panel-note">La colorimétrie est appliquée après le flou. Elle est conservée quand tu changes de style.</p>
+          <div class="panel-actions">
+            <button class="btn ghost small" id="btnResetColor"><svg><use href="#i-reset"/></svg>Remettre les couleurs d'origine</button>
+          </div>
+        </div>
+
+        <div class="panel" data-panel="output" role="tabpanel" hidden>
+          <div id="outputBody"></div>
+        </div>
       </div>
 
       <div class="side-actions">
@@ -84,11 +114,9 @@
     </aside>
   </main>
 
-  <footer class="credit">
-    <span>NeiBlur <span id="version"></span></span>
-    <span class="dot">·</span>
+  <footer class="statusbar">
     <span>Créé par <b class="author">neidev</b></span>
-    <span class="dot">·</span>
+    <span class="sep"></span>
     <span>moteur <a href="#" data-url="https://github.com/f0e/blur">Blur</a> par f0e</span>
   </footer>
 </div>
@@ -96,9 +124,9 @@
 <!-- Installation du moteur -->
 <div class="overlay" id="setup" hidden>
   <div class="dialog setup" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
-    <svg class="logo big" viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="8" fill="var(--accent)"/><circle cx="19" cy="16" r="6" fill="#fff"/><circle cx="13.5" cy="16" r="6" fill="#fff" opacity=".45"/><circle cx="9" cy="16" r="6" fill="#fff" opacity=".2"/></svg>
+    <svg class="logo big" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="5" fill="var(--logo-bg)"/><rect x="5" y="11" width="9" height="2.4" rx="1.2" fill="var(--accent)" opacity=".35"/><rect x="3" y="15" width="12" height="2.4" rx="1.2" fill="var(--accent)" opacity=".6"/><rect x="5" y="19" width="9" height="2.4" rx="1.2" fill="var(--accent)" opacity=".35"/><circle cx="20.5" cy="16.2" r="6.5" fill="var(--accent)"/></svg>
     <h1 id="setupTitle">Bienvenue dans NeiBlur</h1>
-    <p>Pour un rendu aussi rapide que Blur, NeiBlur utilise le même moteur : VapourSynth, SVP et RIFE (sur la carte graphique) et FFmpeg.
+    <p>NeiBlur utilise le même moteur que Blur : VapourSynth, SVP et RIFE (sur la carte graphique) et FFmpeg.
       Il s'installe une seule fois, sans droits administrateur, dans ton dossier utilisateur.</p>
     <p class="muted" id="setupSize"></p>
     <div class="install-progress" id="installProgress" hidden>
@@ -134,7 +162,7 @@
       <output id="previewTimeOut">0:00</output>
       <span class="muted small" id="previewMs"></span>
     </div>
-    <p class="hint">L'aperçu utilise les réglages actuels. Modifie-les puis reviens ici : l'image se recalcule toute seule.</p>
+    <p class="hint">L'aperçu utilise les réglages actuels (flou et couleur) et se recalcule dès que tu les modifies.</p>
   </div>
 </div>
 
@@ -164,13 +192,13 @@
   <div class="dialog about" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
     <div class="dialog-head"><h2 id="aboutTitle">À propos</h2><button class="icon-btn" data-close aria-label="Fermer"><svg><use href="#i-x"/></svg></button></div>
     <div class="about-hero">
-      <svg class="logo big" viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="8" fill="var(--accent)"/><circle cx="19" cy="16" r="6" fill="#fff"/><circle cx="13.5" cy="16" r="6" fill="#fff" opacity=".45"/><circle cx="9" cy="16" r="6" fill="#fff" opacity=".2"/></svg>
+      <svg class="logo big" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="5" fill="var(--logo-bg)"/><rect x="5" y="11" width="9" height="2.4" rx="1.2" fill="var(--accent)" opacity=".35"/><rect x="3" y="15" width="12" height="2.4" rx="1.2" fill="var(--accent)" opacity=".6"/><rect x="5" y="19" width="9" height="2.4" rx="1.2" fill="var(--accent)" opacity=".35"/><circle cx="20.5" cy="16.2" r="6.5" fill="var(--accent)"/></svg>
       <div><h3>NeiBlur <span id="aboutVersion"></span></h3><p>Créé par <b class="author">neidev</b></p></div>
     </div>
-    <p>NeiBlur ajoute du motion blur à tes vidéos par interpolation et fusion d'images, avec une interface simplifiée et des préréglages prêts à l'emploi.</p>
+    <p>NeiBlur ajoute du motion blur à tes vidéos par interpolation et fusion d'images, avec des styles prêts à l'emploi et une colorimétrie intégrée.</p>
     <h4>Crédits</h4>
     <ul class="credits">
-      <li><a href="#" data-url="https://github.com/f0e/blur">Blur</a> par f0e — moteur et scripts de rendu d'origine (GPL-3.0)</li>
+      <li><a href="#" data-url="https://github.com/f0e/blur">Blur</a> par f0e : moteur et scripts de rendu d'origine (GPL-3.0)</li>
       <li><a href="#" data-url="https://www.vapoursynth.com/">VapourSynth</a> · <a href="#" data-url="https://www.svp-team.com/wiki/Manual:SVPflow">SVPflow</a> · <a href="#" data-url="https://github.com/styler00dollar/VapourSynth-RIFE-ncnn-Vulkan">RIFE ncnn Vulkan</a></li>
       <li><a href="#" data-url="https://ffmpeg.org/">FFmpeg</a> · <a href="#" data-url="https://wails.io/">Wails</a></li>
     </ul>
@@ -188,11 +216,11 @@
   </div>
 </div>
 
-<!-- Petite boîte de saisie (nom de préréglage) -->
+<!-- Petite boîte de saisie (nom de style) -->
 <div class="overlay" id="promptDlg" hidden>
   <div class="dialog small-dlg" role="dialog" aria-modal="true" aria-labelledby="promptTitle">
-    <h2 id="promptTitle">Nouveau préréglage</h2>
-    <input class="input" id="promptInput" maxlength="32" placeholder="Nom du préréglage">
+    <h2 id="promptTitle">Nouveau style</h2>
+    <input class="input" id="promptInput" maxlength="32" placeholder="Nom du style">
     <div class="row-gap end"><button class="btn ghost small" data-close>Annuler</button><button class="btn primary small" id="promptOk">Enregistrer</button></div>
   </div>
 </div>
@@ -204,7 +232,7 @@
   <defs>
     <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
-    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M7 4h3v16H7zM14 4h3v16h-3z"/></symbol>
@@ -212,19 +240,19 @@
     <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
-    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
     <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/></symbol>
     <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
     <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
-    <symbol id="i-retry" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></symbol>
     <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4"/></symbol>
     <symbol id="i-gamepad" viewBox="0 0 24 24"><path d="M6 12h4M8 10v4M15 13h.01M18 11h.01"/><rect x="2" y="6" width="20" height="12" rx="6"/></symbol>
     <symbol id="i-feather" viewBox="0 0 24 24"><path d="M20.2 12.2A6 6 0 0 0 11.8 3.8L5 10.6V19h8.4zM16 8 2 22M17.5 15H9"/></symbol>
     <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></symbol>
     <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8zM5 2l.6 1.4L7 4l-1.4.6L5 6l-.6-1.4L3 4l1.4-.6z"/></symbol>
     <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2.2 2.2 0 0 0-2.9-.1zM12 15l-3-3a22 22 0 0 1 2-4A12.9 12.9 0 0 1 22 2c0 2.7-.8 7.5-6 11a22.4 22.4 0 0 1-4 2zM9 12H4s.6-3 2-4c1.6-1.1 5 0 5 0M12 15v5s3-.6 4-2c1.1-1.6 0-5 0-5"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-wind" viewBox="0 0 24 24"><path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/></symbol>
   </defs>
 </svg>
 

@@ -125,6 +125,23 @@ def vegas(frames: int) -> list[float]:
     return normalize(weights)
 
 
+def hann(frames: int) -> list[float]:
+    """Cosine bell (NeiBlur): smooth fade-in/out, no hard trail edges."""
+    return normalize([math.sin(math.pi * (i + 1) / (frames + 1)) ** 2 for i in range(frames)])
+
+
+def soft_shutter(frames: int, edge: float = 0.25) -> list[float]:
+    """Flat shutter with cosine-softened edges (NeiBlur): equal's sharpness without hard cut-offs."""
+    if frames < 3:
+        return equal(frames)
+    weights = []
+    for i in range(frames):
+        t = (i + 0.5) / frames  # 0..1
+        d = min(t, 1 - t) / edge
+        weights.append(1.0 if d >= 1 else 0.5 - 0.5 * math.cos(math.pi * d))
+    return normalize(weights)
+
+
 def divide(frames: int, weights: list[float]) -> list[float]:
     """
     Stretch weights array to specified frame count.
@@ -181,6 +198,12 @@ def parse(
 
         case "vegas":
             return vegas(blur_frames)
+
+        case "hann":
+            return hann(blur_frames)
+
+        case "soft_shutter":
+            return soft_shutter(blur_frames)
 
         case _:
             try:

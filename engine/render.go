@@ -157,16 +157,50 @@ func (j Job) vspipeArgs(p Paths, extra ...string) ([]string, error) {
 		"-a", fmt.Sprintf("fps_num=%d", j.Info.FPSNum),
 		"-a", fmt.Sprintf("fps_den=%d", j.Info.FPSDen),
 		"-a", "color_range="+colorRange,
+		"-a", "color_matrix="+vsMatrix(j.Info.ColorSpace),
 		"-a", "settings="+settings,
 		"-a", "enable_lsmash=true",
 		p.Script, "-")
 	return args, nil
 }
 
+// vsMatrix traduit l'espace colorimétrique ffprobe en nom de matrice zimg ("" = deviné selon la hauteur).
+func vsMatrix(colorSpace string) string {
+	switch colorSpace {
+	case "bt709":
+		return "709"
+	case "bt470bg":
+		return "470bg"
+	case "smpte170m":
+		return "170m"
+	case "bt2020nc":
+		return "2020ncl"
+	case "smpte240m":
+		return "240m"
+	}
+	return ""
+}
+
+// scaleFilter redimensionne pour que le côté court fasse s.Resolution pixels (vidéos verticales comprises).
+func (j Job) scaleFilter() string {
+	r := j.Settings.Resolution
+	w, h := j.Info.Width, j.Info.Height
+	if r <= 0 || w <= 0 || h <= 0 || min(w, h) == r {
+		return ""
+	}
+	if w < h {
+		return fmt.Sprintf("scale=%d:-2:flags=lanczos", r)
+	}
+	return fmt.Sprintf("scale=-2:%d:flags=lanczos", r)
+}
+
 func (j Job) ffmpegArgs() []string {
 	s := j.Settings
 	args := []string{"-loglevel", "error", "-hide_banner", "-nostats", "-y",
-		"-i", "-", "-fflags", "+genpts", "-i", j.Input, "-map", "0:v", "-map", "1:a?"}
+		"-i", "-", "-fflags", "+genpts", "-i", j.Input, "-map", "0:v"}
+	if !s.NoAudio {
+		args = append(args, "-map", "1:a?")
+	}
 
 	// vspipe perd les métadonnées couleur : on les rétablit (comme Blur)
 	var params []string
@@ -182,8 +216,15 @@ func (j Job) ffmpegArgs() []string {
 			params = append(params, k+"="+v)
 		}
 	}
+	var vf []string
 	if len(params) > 0 {
-		args = append(args, "-vf", "setparams="+strings.Join(params, ":"))
+		vf = append(vf, "setparams="+strings.Join(params, ":"))
+	}
+	if sc := j.scaleFilter(); sc != "" {
+		vf = append(vf, sc)
+	}
+	if len(vf) > 0 {
+		args = append(args, "-vf", strings.Join(vf, ","))
 	}
 	if j.Info.PixFmt != "" {
 		args = append(args, "-pix_fmt", j.Info.PixFmt)
@@ -204,12 +245,20 @@ func (j Job) ffmpegArgs() []string {
 			af = append(af, fmt.Sprintf("atempo=%g", s.OutputTimescale))
 		}
 	}
-	if len(af) > 0 {
+	if len(af) > 0 && !s.NoAudio {
 		args = append(args, "-af", strings.Join(af, ","))
 	}
 	args = append(args, encoderArgs(s.Codec, j.GPUType, s.GPUEncoding, s.Quality)...)
-	args = append(args, "-c:a", "aac", "-b:a", "320k", "-movflags", "+faststart", j.Output)
-	return args
+	if !s.NoAudio {
+		args = append(args, "-c:a", "aac", "-b:a", fmt.Sprintf("%dk", s.AudioBitrate))
+	}
+	if s.Container != "mkv" {
+		args = append(args, "-movflags", "+faststart")
+	}
+	if s.Codec == "h265" && s.Container != "mkv" {
+		args = append(args, "-tag:v", "hvc1") // lisible par les lecteurs Apple / QuickTime
+	}
+	return append(args, j.Output)
 }
 
 // ---------- Rendu ----------
@@ -469,7 +518,7 @@ func (j Job) outputFrameAt(t float64) int {
 
 // PreviewFrames renvoie (avant, après) en JPEG pour l'instant t (secondes dans la source).
 func PreviewFrames(ctx context.Context, p Paths, j Job, t float64) (before, after []byte, err error) {
-	scale := "scale='min(1280,iw)':-2"
+	scale := "scale='min(1920,iw)':-2"
 	var wg sync.WaitGroup
 	var errB error
 	wg.Add(1)
@@ -618,7 +667,7 @@ func OutputPath(input, outDir string, s Settings) string {
 		if i > 1 {
 			name += fmt.Sprintf(" (%d)", i)
 		}
-		out := filepath.Join(outDir, name+".mp4")
+		out := filepath.Join(outDir, name+"."+s.Container)
 		if !exists(out) {
 			return out
 		}

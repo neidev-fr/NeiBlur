@@ -12,7 +12,7 @@
   "info": {
     "companyName": "neidev",
     "productName": "NeiBlur",
-    "productVersion": "1.0.0",
+    "productVersion": "1.1.0",
     "copyright": "© 2026 neidev — GPL-3.0",
     "comments": "Motion blur pour vidéos. Moteur : Blur par f0e."
   }

@@ -1,0 +1,54 @@
+# Compile NeiBlur.exe sur les serveurs de GitHub (aucun outil à installer sur ton PC).
+# - À chaque envoi (push) sur main : l'exe est compilé et téléchargeable dans l'onglet Actions.
+# - Bouton « Run workflow » (onglet Actions) : compile ET publie une Release avec l'exe.
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Publier une release GitHub avec l'exe"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Installer Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+
+      - name: Compiler
+        run: wails build -clean -trimpath -ldflags "-s -w" -skipbindings
+
+      - name: Lire la version
+        id: v
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path main.go -Pattern 'AppVersion = "(.+)"').Matches[0].Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NeiBlur-${{ steps.v.outputs.version }}
+          path: build/bin/NeiBlur.exe
+
+      - name: Publier la release
+        if: github.event_name == 'workflow_dispatch' && inputs.release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: NeiBlur ${{ steps.v.outputs.version }}
+          files: build/bin/NeiBlur.exe
+          generate_release_notes: true

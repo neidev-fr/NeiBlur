@@ -14,7 +14,7 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
-const AppVersion = "1.0.0"
+const AppVersion = "1.1.0"
 
 func main() {
 	app := NewApp()
@@ -25,7 +25,7 @@ func main() {
 		MinWidth:         920,
 		MinHeight:        620,
 		AssetServer:      &assetserver.Options{Assets: assets},
-		BackgroundColour: &options.RGBA{R: 17, G: 18, B: 22, A: 255},
+		BackgroundColour: &options.RGBA{R: 22, G: 22, B: 24, A: 255},
 		OnStartup:        app.startup,
 		OnBeforeClose:    app.beforeClose,
 		OnShutdown:       app.shutdown,

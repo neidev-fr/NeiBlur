@@ -7,13 +7,16 @@ const on = (name, cb) => window.runtime.EventsOn(name, cb);
 
 const S = { presets: [], defaults: {}, config: null, jobs: [], gpus: null, installed: false, version: "" };
 
-// Réglages « machine » : conservés quand on change de préréglage.
-const KEEP = ["gpuEncoding", "gpuDecoding", "gpuInterp", "codec", "detailedFilenames", "copyDates"];
+// Réglages « machine / sortie » : toujours conservés quand on change de style.
+const MACHINE = ["gpuEncoding", "gpuDecoding", "gpuInterp", "codec", "detailedFilenames", "copyDates", "resolution", "container", "noAudio", "audioBitrate"];
+// Colorimétrie : conservée quand on choisit un style intégré (un style perso l'applique).
+const COLOR = ["brightness", "contrast", "saturation", "exposure", "temperature", "tint", "shadows", "highlights", "vibrance", "fade", "vignette", "sharpen", "look", "lookAmount"];
 
 // ---------- Utilitaires ----------
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const icon = (id) => `<svg><use href="#i-${id}"/></svg>`;
+const same = (a, b) => (typeof a === "number" && typeof b === "number" ? Math.abs(a - b) < 1e-6 : a === b);
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 function fmtClock(s) { s = Math.max(0, Math.round(s)); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, "0")}`; }
 function fmtDur(s) {
@@ -25,6 +28,15 @@ function fmtDur(s) {
 }
 function fmtSize(b) { if (!b) return ""; const u = ["o", "Ko", "Mo", "Go"]; let i = 0; while (b >= 1024 && i < 3) { b /= 1024; i++; } return `${b.toFixed(i > 1 ? 1 : 0)} ${u[i]}`; }
 function fmtFps(f) { return f ? (Math.abs(f - Math.round(f)) < 0.01 ? Math.round(f) : f.toFixed(2)) : "?"; }
+
+// Remplit la piste d'un curseur entre son origine (0 ou la valeur neutre) et la valeur actuelle.
+function paintRange(inp, origin) {
+  const min = +inp.min, max = +inp.max, span = max - min || 1;
+  const o = origin === undefined ? min : Math.min(max, Math.max(min, origin));
+  const a = ((Math.min(o, +inp.value) - min) / span) * 100, b = ((Math.max(o, +inp.value) - min) / span) * 100;
+  inp.style.setProperty("--a", `${a}%`);
+  inp.style.setProperty("--b", `${b}%`);
+}
 
 function toast(msg, kind = "ok", ms = 3500) {
   const el = document.createElement("div");
@@ -43,14 +55,26 @@ document.addEventListener("click", (e) => {
 });
 document.querySelectorAll(".overlay").forEach((o) => o.addEventListener("mousedown", (e) => { if (e.target === o && o.id !== "setup") closeDlg(o); }));
 
-// ---------- Préréglages ----------
+// ---------- Onglets ----------
+function showTab(name) {
+  document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === name)));
+  document.querySelectorAll(".panel").forEach((p) => (p.hidden = p.dataset.panel !== name));
+  $("#sideScroll").scrollTop = 0;
+  try { localStorage.setItem("tab", name); } catch {}
+}
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+// ---------- Styles (préréglages) ----------
 const allPresets = () => [...S.presets, ...(S.config.userPresets || [])];
 const currentPreset = () => allPresets().find((p) => p.id === S.config.presetId) || S.presets[0];
+const ignoredKeys = () => (currentPreset().custom ? MACHINE : [...MACHINE, ...COLOR]);
 
 function isModified() {
-  const p = currentPreset().settings, s = S.config.settings;
-  return Object.keys(p).some((k) => !KEEP.includes(k) && (typeof p[k] === "number" ? Math.abs(p[k] - s[k]) > 1e-6 : p[k] !== s[k]));
+  const p = currentPreset().settings, s = S.config.settings, skip = ignoredKeys();
+  return Object.keys(p).some((k) => !skip.includes(k) && !same(p[k], s[k]));
 }
+const colorActive = (s) => COLOR.some((k) => !same(s[k], S.defaults[k]));
+const SPEED = { 1: ["lent", "slow"], 2: ["moyen", ""], 3: ["rapide", ""] };
 
 function renderPresets() {
   const box = $("#presets");
@@ -62,8 +86,8 @@ function renderPresets() {
     b.setAttribute("role", "radio");
     b.setAttribute("aria-checked", String(p.id === S.config.presetId));
     b.title = p.description;
-    b.innerHTML = `<div class="preset-top">${icon(p.icon || "star")}<span>${esc(p.name)}</span></div>
-      <div class="speed" title="Vitesse de rendu">${[1, 2, 3].map((i) => `<i class="${i <= p.speed ? "on" : ""}"></i>`).join("")}</div>
+    const [speed, cls] = SPEED[p.speed] || SPEED[2];
+    b.innerHTML = `${icon(p.icon || "star")}<span class="preset-name">${esc(p.name)}</span><span class="preset-speed ${cls}" title="Vitesse de rendu">${speed}</span>
       ${p.custom ? `<button class="icon-btn sm del" title="Supprimer" aria-label="Supprimer ${esc(p.name)}">${icon("x")}</button>` : ""}`;
     const pick = () => selectPreset(p);
     b.addEventListener("click", (e) => {
@@ -81,22 +105,23 @@ function renderPresets() {
   document.querySelectorAll(".preset").forEach((el, i) => el.classList.toggle("warn", rifeBroken(allPresets()[i]?.settings || {})));
 }
 
-const RIFE_WARN = "RIFE ne fonctionne pas correctement avec ton pilote graphique (images vides). Mets à jour le pilote de ta carte graphique, ou utilise SVP (préréglages Gaming, Cinéma…).";
+const RIFE_WARN = "RIFE ne fonctionne pas correctement avec ton pilote graphique (images vides). Mets à jour le pilote de ta carte graphique, ou utilise un style basé sur SVP (Gaming, Cinéma…).";
 const usesRife = (s) => (s.interpolate && (s.interpMethod === "rife" || (s.interpMethod === "svp" && s.preInterpolate))) || (s.deduplicate && s.dedupMethod === "rife");
 const rifeBroken = (s) => S.rifeOk === false && usesRife(s);
 
 function selectPreset(p) {
   const keep = {};
-  KEEP.forEach((k) => (keep[k] = S.config.settings[k]));
+  (p.custom ? MACHINE : [...MACHINE, ...COLOR]).forEach((k) => (keep[k] = S.config.settings[k]));
   S.config.presetId = p.id;
   S.config.settings = { ...clone(p.settings), ...keep };
   syncAll();
-  saveConfig();
+  changed();
 }
 
 // ---------- Réglages principaux ----------
 const intensity = $("#intensity");
 intensity.addEventListener("input", () => { S.config.settings.blurAmount = +intensity.value; syncMain(); changed(); });
+intensity.addEventListener("dblclick", () => { S.config.settings.blurAmount = currentPreset().settings.blurAmount; syncMain(); changed(); });
 
 $("#fpsSeg").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
@@ -105,85 +130,123 @@ $("#fpsSeg").addEventListener("click", (e) => {
 });
 $("#fpsCustom").addEventListener("change", (e) => {
   const v = Math.round(+e.target.value);
-  if (v > 0 && v <= 1000) { S.config.settings.outputFps = v; changed(); }
+  if (v > 0 && v <= 2000) { S.config.settings.outputFps = v; changed(); } else toast("Valeur entre 1 et 2000", "err");
   syncMain();
 });
 
+const STD_FPS = [24, 30, 60, 120, 240];
 function syncMain() {
   const s = S.config.settings;
   intensity.value = s.blurAmount;
-  $("#intensityOut").textContent = `${Math.round(s.blurAmount * 100)} %`;
-  $("#intensityOut").title = `Obturation équivalente : ${Math.round(s.blurAmount * 360)}°`;
-  const std = [24, 30, 60, 120].includes(s.outputFps);
+  paintRange(intensity);
+  $("#intensityOut").textContent = `${Math.round(s.blurAmount * 100)} % · ${Math.round(s.blurAmount * 360)}°`;
+  $("#intensityOut").title = "Intensité · angle d'obturation équivalent";
+  const std = STD_FPS.includes(s.outputFps);
   $("#fpsSeg").querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", String(std ? +b.dataset.v === s.outputFps : b.dataset.v === "custom")));
   $("#fpsCustomBtn").textContent = std ? "Autre" : `${s.outputFps}`;
   if (std) $("#fpsCustom").hidden = true; else $("#fpsCustom").value = s.outputFps;
   $("#modified").hidden = !isModified();
+  $("#colorDot").hidden = !colorActive(s);
   document.querySelectorAll(".preset").forEach((el, i) => el.setAttribute("aria-checked", String(allPresets()[i]?.id === S.config.presetId)));
 }
 
-// ---------- Réglages avancés (générés) ----------
+// ---------- Réglages détaillés (générés) ----------
 const pct = (v) => `${Math.round(v * 100)} %`;
+const signed = (v) => { const n = Math.round(v * 100); return n > 0 ? `+${n}` : `${n}`; };
+const QUALITY = (v) => `${v} ${v <= 12 ? "· max" : v <= 18 ? "· haute" : v <= 25 ? "· normale" : "· légère"}`;
+
+// panel : blur (sous le réglage d'intensité), blur-adv (repliable), color, output
 const ADV = [
-  { title: "Flou", rows: [
-    { key: "weighting", type: "select", label: "Pondération", help: "Comment les images sont mélangées. « Uniforme » est le plus naturel.",
-      options: [["equal", "Uniforme"], ["gaussian_sym", "Gaussienne douce"], ["pyramid", "Pyramide"], ["descending", "Traînée arrière"], ["ascending", "Traînée avant"], ["vegas", "Vegas"], ["gaussian", "Gaussienne"], ["gaussian_reverse", "Gaussienne inversée"]] },
-    { key: "gamma", type: "range", label: "Flou lumineux (gamma)", min: 1, max: 3, step: 0.1, fmt: (v) => v.toFixed(1), help: "Au-dessus de 1, les zones claires ressortent davantage dans les traînées (plus réaliste, un peu plus lent)." },
+  { panel: "blur", rows: [
+    { key: "weighting", type: "select", label: "Forme du flou", help: "Comment les images sont mélangées. « Obturateur doux » et « Cloche » évitent les bords durs des traînées.",
+      options: [["soft_shutter", "Obturateur doux"], ["hann", "Cloche (fondu)"], ["equal", "Uniforme (Blur)"], ["gaussian_sym", "Gaussienne douce"], ["pyramid", "Pyramide"], ["descending", "Traînée arrière"], ["ascending", "Traînée avant"], ["vegas", "Vegas"], ["gaussian", "Gaussienne"], ["gaussian_reverse", "Gaussienne inversée"]] },
+    { key: "gamma", type: "range", label: "Lumière réaliste (gamma)", min: 0.5, max: 4, step: 0.1, origin: 1, fmt: (v) => v.toFixed(1), help: "2.2 mélange les images en lumière linéaire : les zones claires laissent de vraies traînées lumineuses, comme une vraie caméra. 1 = comportement de Blur." },
   ] },
-  { title: "Interpolation", rows: [
+  { panel: "blur-adv", title: "Interpolation", rows: [
     { key: "interpolate", type: "toggle", label: "Interpoler les images", help: "Crée des images intermédiaires pour un flou lisse. Recommandé." },
     { key: "interpMethod", type: "seg", label: "Méthode", dep: (s) => s.interpolate, options: [["svp", "SVP"], ["rife", "RIFE (IA)"]], help: "SVP : très rapide sur GPU. RIFE : moins d'artefacts, beaucoup plus lent." },
-    { key: "interpolatedFps", type: "text", label: "Images/s interpolées", dep: (s) => s.interpolate, placeholder: "1200 ou 5x", help: "Un nombre (1200) ou un multiple de la source (5x)." },
+    { key: "interpolatedFps", type: "text", label: "Images/s interpolées", dep: (s) => s.interpolate, placeholder: "1200 ou 5x", help: "Un nombre (1200, 2400…) ou un multiple de la source (5x). Plus c'est haut, plus le flou est lisse aux fortes intensités." },
     { key: "preInterpolate", type: "toggle", label: "Pré-interpolation RIFE", dep: (s) => s.interpolate && s.interpMethod === "svp", help: "Passe d'abord par RIFE avant SVP : meilleure qualité, plus lent." },
     { key: "preInterpolatedFps", type: "text", label: "Images/s pré-interpolées", dep: (s) => s.interpolate && s.interpMethod === "svp" && s.preInterpolate, placeholder: "360" },
   ] },
-  { title: "Déduplication", rows: [
+  { panel: "blur-adv", title: "Déduplication", rows: [
     { key: "deduplicate", type: "toggle", label: "Remplacer les images dupliquées", help: "Corrige les saccades des enregistrements qui ont perdu des images." },
     { key: "dedupMethod", type: "seg", label: "Méthode", dep: (s) => s.deduplicate, options: [["svp", "SVP"], ["rife", "RIFE"]] },
-    { key: "dedupRange", type: "number", label: "Portée (images)", dep: (s) => s.deduplicate, min: -1, max: 20, help: "Augmente-la si ta vidéo est enregistrée à un fps plus bas que prévu. -1 = illimité." },
+    { key: "dedupRange", type: "number", label: "Portée (images)", dep: (s) => s.deduplicate, min: -1, max: 100, help: "Augmente-la si ta vidéo est enregistrée à un fps plus bas que prévu. -1 = illimité." },
     { key: "dedupThreshold", type: "text", label: "Seuil", dep: (s) => s.deduplicate, placeholder: "0.001" },
   ] },
-  { title: "Encodage", rows: [
-    { key: "codec", type: "seg", label: "Format", options: [["h264", "H.264"], ["h265", "H.265"], ["av1", "AV1"]], help: "H.264 : lisible partout. H.265 / AV1 : fichiers plus légers." },
-    { key: "quality", type: "range", label: "Qualité", min: 0, max: 51, step: 1, fmt: (v) => `${v} ${v <= 12 ? "· max" : v <= 18 ? "· haute" : v <= 25 ? "· normale" : "· légère"}`, help: "Plus le nombre est petit, meilleure est la qualité (et plus le fichier est gros)." },
-    { key: "gpuEncoding", type: "toggle", label: "Encodage GPU", dep: () => !!gpuName(), help: "Encode avec la carte graphique : plus rapide." },
-    { key: "gpuDecoding", type: "toggle", label: "Décodage GPU" },
-    { key: "gpuInterp", type: "toggle", label: "Interpolation GPU (SVP)" },
-  ] },
-  { title: "Couleurs", rows: [
-    { key: "brightness", type: "range", label: "Luminosité", min: 0.5, max: 1.5, step: 0.01, fmt: pct },
-    { key: "contrast", type: "range", label: "Contraste", min: 0.5, max: 1.5, step: 0.01, fmt: pct },
-    { key: "saturation", type: "range", label: "Saturation", min: 0, max: 2, step: 0.01, fmt: pct },
-  ] },
-  { title: "Vitesse", rows: [
+  { panel: "blur-adv", title: "Vitesse", rows: [
     { key: "inputTimescale", type: "number", label: "Vitesse de la source", min: 0.01, max: 100, step: 0.01, help: "Ex. 0.5 si ta vidéo est déjà ralentie ×2." },
     { key: "outputTimescale", type: "number", label: "Vitesse de sortie", min: 0.01, max: 100, step: 0.01, help: "0.5 = ralenti ×2, 2 = accéléré ×2." },
     { key: "audioPitch", type: "toggle", label: "Changer la hauteur du son", dep: (s) => s.outputTimescale !== 1 },
   ] },
-  { title: "SVP (expert)", rows: [
+  { panel: "blur-adv", title: "SVP (expert)", rows: [
     { key: "svpPreset", type: "select", label: "Préréglage SVP", options: ["weak", "film", "smooth", "animation", "default"].map((v) => [v, v]) },
     { key: "svpAlgorithm", type: "select", label: "Algorithme", options: [["13", "13 (recommandé)"], ["23", "23"], ["1", "1"], ["2", "2"], ["11", "11"], ["21", "21"]] },
     { key: "blockSize", type: "select", label: "Taille de bloc", options: ["4", "8", "16", "32"].map((v) => [v, v]), help: "Petit = plus précis mais plus lent." },
-    { key: "maskArea", type: "number", label: "Masque statique", min: 0, max: 500, help: "Plus haut = les éléments fixes (HUD) sont moins floutés." },
+    { key: "maskArea", type: "number", label: "Masque statique", min: 0, max: 2000, help: "Plus haut = les éléments fixes (HUD) sont moins floutés." },
   ] },
-  { title: "Fichiers", rows: [
+
+  { panel: "color", title: "Look", rows: [
+    { key: "look", type: "select", label: "Look", help: "Une ambiance prête à l'emploi, combinée à tes réglages ci-dessous.",
+      options: [["", "Aucun"], ["film", "Film"], ["teal_orange", "Teal & orange"], ["warm", "Chaud"], ["cool", "Froid"], ["vivid", "Vif"], ["vintage", "Vintage"], ["night", "Nuit"], ["bw", "Noir et blanc"]] },
+    { key: "lookAmount", type: "range", label: "Intensité du look", min: 0.1, max: 2, step: 0.05, origin: 0.1, fmt: pct, dep: (s) => !!s.look },
+  ] },
+  { panel: "color", title: "Lumière", rows: [
+    { key: "exposure", type: "range", label: "Exposition", min: -2, max: 2, step: 0.05, fmt: (v) => `${v > 0 ? "+" : ""}${v.toFixed(2)} IL` },
+    { key: "contrast", type: "range", label: "Contraste", min: 0, max: 2, step: 0.01, fmt: pct },
+    { key: "brightness", type: "range", label: "Luminosité", min: 0.5, max: 1.5, step: 0.01, fmt: pct },
+    { key: "highlights", type: "range", label: "Hautes lumières", min: -1, max: 1, step: 0.01, fmt: signed },
+    { key: "shadows", type: "range", label: "Ombres", min: -1, max: 1, step: 0.01, fmt: signed },
+    { key: "fade", type: "range", label: "Noirs délavés", min: -0.3, max: 0.3, step: 0.01, fmt: signed, help: "Positif : noirs grisés façon film. Négatif : noirs plus profonds." },
+  ] },
+  { panel: "color", title: "Couleur", rows: [
+    { key: "temperature", type: "range", label: "Température", min: -1, max: 1, step: 0.01, fmt: signed, help: "Négatif = plus froid (bleu), positif = plus chaud (orange)." },
+    { key: "tint", type: "range", label: "Teinte", min: -1, max: 1, step: 0.01, fmt: signed, help: "Négatif = vert, positif = magenta." },
+    { key: "saturation", type: "range", label: "Saturation", min: 0, max: 3, step: 0.01, fmt: pct },
+    { key: "vibrance", type: "range", label: "Vibrance", min: -1, max: 1, step: 0.01, fmt: signed, help: "Renforce surtout les couleurs ternes, sans brûler celles déjà saturées." },
+  ] },
+  { panel: "color", title: "Effets", rows: [
+    { key: "vignette", type: "range", label: "Vignettage", min: -1, max: 1, step: 0.01, fmt: signed, help: "Assombrit les coins (négatif : les éclaircit)." },
+    { key: "sharpen", type: "range", label: "Netteté", min: 0, max: 2, step: 0.01, fmt: pct, help: "Redonne du piqué aux zones fixes après le flou." },
+  ] },
+
+  { panel: "output", title: "Encodage", rows: [
+    { key: "codec", type: "seg", label: "Codec", options: [["h264", "H.264"], ["h265", "H.265"], ["av1", "AV1"]], help: "H.264 : lisible partout. H.265 / AV1 : fichiers plus légers." },
+    { key: "quality", type: "range", label: "Qualité", min: 0, max: 51, step: 1, fmt: QUALITY, reverse: true, help: "Plus le nombre est petit, meilleure est la qualité (et plus le fichier est gros)." },
+    { key: "gpuEncoding", type: "toggle", label: "Encodage GPU", dep: () => !!gpuName(), help: "Encode avec la carte graphique : plus rapide." },
+    { key: "gpuDecoding", type: "toggle", label: "Décodage GPU" },
+    { key: "gpuInterp", type: "toggle", label: "Interpolation GPU (SVP)" },
+  ] },
+  { panel: "output", title: "Image", rows: [
+    { key: "resolution", type: "select", num: true, label: "Résolution", help: "Côté le plus court de la vidéo (les vidéos verticales sont gérées). Monter en 1440p ou 4K améliore la qualité sur YouTube.",
+      options: [[0, "Originale"], [2160, "2160p (4K)"], [1440, "1440p"], [1080, "1080p"], [720, "720p"], [480, "480p"]] },
+    { key: "container", type: "seg", label: "Format", options: [["mp4", "MP4"], ["mkv", "MKV"], ["mov", "MOV"]] },
+  ] },
+  { panel: "output", title: "Son", rows: [
+    { key: "noAudio", type: "toggle", label: "Supprimer le son" },
+    { key: "audioBitrate", type: "select", num: true, label: "Débit audio", dep: (s) => !s.noAudio, options: [[128, "128 kb/s"], [192, "192 kb/s"], [256, "256 kb/s"], [320, "320 kb/s"]] },
+  ] },
+  { panel: "output", title: "Fichiers", rows: [
     { key: "detailedFilenames", type: "toggle", label: "Réglages dans le nom du fichier" },
     { key: "copyDates", type: "toggle", label: "Conserver la date de la source" },
   ] },
 ];
+const PANEL_BODY = { blur: "#blurBody", "blur-adv": "#advBody", color: "#colorBody", output: "#outputBody" };
 const advUpdaters = [];
 
 function buildAdvanced() {
-  const body = $("#advBody");
-  body.innerHTML = "";
+  Object.values(PANEL_BODY).forEach((sel) => ($(sel).innerHTML = ""));
   for (const g of ADV) {
     const grp = document.createElement("div");
-    grp.className = "adv-group";
-    grp.innerHTML = `<h3>${g.title}</h3>`;
+    if (g.title) { grp.className = "group"; grp.innerHTML = `<div class="group-title">${g.title}</div>`; }
     for (const r of g.rows) grp.append(buildRow(r));
-    body.append(grp);
+    $(PANEL_BODY[g.panel]).append(grp);
   }
 }
+
+// Valeur « neutre » d'un réglage (double-clic) : défaut pour couleur / sortie, sinon valeur du style.
+const resetValue = (key) => (COLOR.includes(key) || MACHINE.includes(key) ? S.defaults[key] : currentPreset().settings[key]);
 
 function buildRow(r) {
   const row = document.createElement("div");
@@ -194,8 +257,11 @@ function buildRow(r) {
     row.className = "adv-row col";
     row.innerHTML = `<div class="top"><label for="${id}">${r.label}</label><output></output></div><input type="range" id="${id}" min="${r.min}" max="${r.max}" step="${r.step}">`;
     const inp = $("input", row), out = $("output", row);
-    inp.addEventListener("input", () => { S.config.settings[r.key] = +inp.value; out.textContent = r.fmt(+inp.value); changed(); syncMain(); });
-    update = (s) => { inp.value = s[r.key]; out.textContent = r.fmt(+s[r.key]); };
+    const origin = () => (r.reverse ? +r.max : r.origin ?? (r.min < 0 ? 0 : COLOR.includes(r.key) ? S.defaults[r.key] : r.min));
+    const show = (v) => { out.textContent = r.fmt(v); paintRange(inp, origin()); row.classList.toggle("changed", COLOR.includes(r.key) && !same(v, S.defaults[r.key])); };
+    inp.addEventListener("input", () => { S.config.settings[r.key] = +inp.value; show(+inp.value); changed(); syncMain(); });
+    inp.addEventListener("dblclick", () => set(resetValue(r.key)));
+    update = (s) => { inp.value = s[r.key]; show(+s[r.key]); };
   } else if (r.type === "toggle") {
     row.className = "adv-row";
     row.innerHTML = `<label for="${id}">${r.label}</label><input type="checkbox" id="${id}">`;
@@ -211,8 +277,8 @@ function buildRow(r) {
     row.className = "adv-row";
     row.innerHTML = `<label for="${id}">${r.label}</label><select class="input" id="${id}">${r.options.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select>`;
     const inp = $("select", row);
-    inp.addEventListener("change", () => set(inp.value));
-    update = (s) => { inp.value = s[r.key]; };
+    inp.addEventListener("change", () => set(r.num ? +inp.value : inp.value));
+    update = (s) => { inp.value = String(s[r.key] ?? ""); };
   } else {
     row.className = "adv-row";
     const num = r.type === "number";
@@ -231,8 +297,12 @@ function buildRow(r) {
 
 function syncAdvanced() { advUpdaters.forEach((u) => u(S.config.settings)); }
 
-$("#adv").addEventListener("toggle", (e) => { if (e.target.open) $("#adv summary").scrollIntoView({ behavior: "smooth", block: "start" }); });
 $("#btnReset").addEventListener("click", () => selectPreset(currentPreset()));
+$("#btnResetColor").addEventListener("click", () => {
+  COLOR.forEach((k) => (S.config.settings[k] = S.defaults[k]));
+  syncAll();
+  changed();
+});
 $("#btnSavePreset").addEventListener("click", () => {
   $("#promptInput").value = "";
   openDlg("#promptDlg");
@@ -245,7 +315,7 @@ async function savePresetFromPrompt() {
   S.config = await api().SavePreset(name, S.config.settings);
   closeDlg("#promptDlg");
   syncAll();
-  toast(`Préréglage « ${name} » enregistré`);
+  toast(`Style « ${name} » enregistré`);
 }
 
 // ---------- Sauvegarde ----------
@@ -262,7 +332,7 @@ function renderJobs() {
   $("#empty").hidden = has;
   $("#queueHead").hidden = !has;
   $("#drop").classList.toggle("compact", has);
-  $("#queueCount").textContent = has ? `(${S.jobs.length})` : "";
+  $("#queueCount").textContent = has ? `${S.jobs.length}` : "";
   const finished = S.jobs.some((j) => ["done", "error", "cancelled"].includes(j.status));
   $("#btnClear").hidden = !finished;
 
@@ -309,7 +379,7 @@ function updateJobEl(el, j) {
   $(".job-name", el).textContent = j.name;
   $(".job-name", el).title = j.path;
   const i = j.info;
-  $(".job-meta", el).textContent = i.duration ? [`${i.width}×${i.height}`, `${fmtFps(i.fps)} i/s`, fmtClock(i.duration), fmtSize(i.size)].filter(Boolean).join(" · ") : "";
+  $(".job-meta", el).textContent = i.duration ? [`${i.width}×${i.height}`, `${fmtFps(i.fps)} i/s`, fmtClock(i.duration), fmtSize(i.size)].filter(Boolean).join("  ·  ") : "";
 
   const st = $(".job-status", el), bar = $(".bar", el), fill = $(".bar-fill", el), p = j.progress || {};
   st.className = "job-status";
@@ -320,7 +390,7 @@ function updateJobEl(el, j) {
     case "ready": st.textContent = "Prêt"; break;
     case "queued": st.innerHTML = `<span class="badge">En attente</span>`; break;
     case "rendering":
-      st.textContent = p.total ? `${Math.floor(p.percent)} % · ${p.fps || "…"} i/s · reste ${p.eta >= 0 ? fmtDur(p.eta) : "…"}` : "Préparation (indexation de la vidéo)…";
+      st.textContent = p.total ? `${Math.floor(p.percent)} %  ·  ${p.fps || "…"} i/s  ·  reste ${p.eta >= 0 ? fmtDur(p.eta) : "…"}` : "Préparation (indexation de la vidéo)…";
       break;
     case "paused": st.textContent = `En pause · ${Math.floor(p.percent || 0)} %`; break;
     case "done": st.classList.add("ok"); st.innerHTML = `${icon("check")}Terminé en ${fmtDur(j.elapsed)}`; break;
@@ -407,6 +477,7 @@ function setPreviewJob(id, resetTime) {
   const t = $("#previewTime");
   t.max = Math.max(0.1, j.info.duration - 0.2);
   if (resetTime) t.value = Math.min(j.info.duration * 0.4, +t.max);
+  paintRange(t);
   $("#previewTimeOut").textContent = fmtClock(+t.value);
   $("#imgBefore").removeAttribute("src");
   $("#imgAfter").removeAttribute("src");
@@ -435,7 +506,7 @@ const requestPreview = debounce(async () => {
 
 $("#btnPreview").addEventListener("click", () => openPreview());
 $("#previewJob").addEventListener("change", (e) => setPreviewJob(e.target.value, true));
-$("#previewTime").addEventListener("input", (e) => { $("#previewTimeOut").textContent = fmtClock(+e.target.value); requestPreview(); });
+$("#previewTime").addEventListener("input", (e) => { paintRange(e.target); $("#previewTimeOut").textContent = fmtClock(+e.target.value); requestPreview(); });
 $("#split").addEventListener("input", (e) => $("#compare").style.setProperty("--split", `${e.target.value}%`));
 
 // ---------- Paramètres ----------
@@ -465,9 +536,9 @@ function syncGpu() {
   if (!S.installed || !S.gpus) { pill.hidden = true; return; }
   const n = gpuName();
   pill.hidden = false;
-  pill.className = `pill ${n ? "ok" : ""}`;
+  pill.className = `status-chip ${n ? "ok" : ""}`;
   pill.textContent = n ? `GPU ${n}` : "Encodage CPU";
-  pill.title = n ? `Encodeur matériel ${n} détecté (activable dans les réglages avancés)` : "Aucun encodeur matériel utilisable détecté";
+  pill.title = n ? `Encodeur matériel ${n} détecté (activable dans l'onglet Sortie)` : "Aucun encodeur matériel utilisable détecté";
   syncAdvanced();
 }
 
@@ -536,6 +607,9 @@ async function boot() {
   $("#aboutVersion").textContent = `v${st.version}`;
   $("#engineLabel").textContent = st.enginePath;
   buildAdvanced();
+  let tab = "blur";
+  try { tab = localStorage.getItem("tab") || "blur"; } catch {}
+  showTab(["blur", "color", "output"].includes(tab) ? tab : "blur");
   syncAll();
   renderJobs();
   syncGpu();
